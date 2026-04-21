@@ -62,6 +62,28 @@ fn dedent_lines(text: &str, base_indent: usize) -> String {
     result
 }
 
+/// Find the position of the last closing fence (` ``` `) in `rest`, allowing
+/// optional leading/trailing whitespace around the triple backticks.
+/// Returns the byte offset of the `\n` that precedes the closing fence line.
+///
+/// Note: this only finds closing fences that appear after a `\n` in `rest`.
+/// The caller must handle the degenerate case where `rest` itself is just
+/// the closing fence (e.g. a two-line fenced block with no inner code).
+fn rfind_closing_fence(rest: &str) -> Option<usize> {
+    // Search backwards for a line that is exactly (optional whitespace +) ```
+    // (optional trailing whitespace). Lines like "```js" are opening fences
+    // and must NOT match.
+    let mut end = rest.len();
+    for (newline_pos, _) in rest.match_indices('\n').rev() {
+        let line = &rest[newline_pos + 1..end];
+        if line.trim() == "```" {
+            return Some(newline_pos);
+        }
+        end = newline_pos;
+    }
+    None
+}
+
 impl JsdocFormatter<'_, '_> {
     pub(super) fn format_example_tag(
         &mut self,
@@ -145,7 +167,7 @@ impl JsdocFormatter<'_, '_> {
         if let Some((first_line, rest)) = code.split_once('\n')
             && first_line.starts_with("```")
         {
-            if let Some(closing_pos) = rest.rfind("\n```") {
+            if let Some(closing_pos) = rfind_closing_fence(rest) {
                 let inner_code = &rest[..closing_pos];
                 let closing_fence = rest[closing_pos + 1..].trim();
                 self.format_example_fenced_block(first_line, inner_code, closing_fence);
